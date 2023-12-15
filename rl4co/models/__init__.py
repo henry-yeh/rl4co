@@ -1,5 +1,6 @@
 from rl4co.models.zoo.active_search import ActiveSearch
 from rl4co.models.zoo.am import AttentionModel, AttentionModelPolicy
+from rl4co.models.zoo.am import AttentionModel_NAR, AttentionModelPolicy_NAR
 from rl4co.models.zoo.common.autoregressive import (
     AutoregressiveDecoder,
     AutoregressivePolicy,
