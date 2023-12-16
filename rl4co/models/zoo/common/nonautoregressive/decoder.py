@@ -4,7 +4,6 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from einops import rearrange
 from tensordict import TensorDict
 from torch import Tensor
 
@@ -12,7 +11,7 @@ from rl4co.envs import RL4COEnvBase, get_env
 from rl4co.models.nn.env_embeddings import env_context_embedding, env_dynamic_embedding
 from rl4co.models.nn.env_embeddings.dynamic import StaticEmbedding
 from rl4co.models.nn.utils import decode_probs, get_log_likelihood
-from rl4co.utils.ops import batchify, get_num_starts, select_start_nodes, unbatchify
+from rl4co.utils.ops import batchify, get_num_starts, select_start_nodes
 from rl4co.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -155,8 +154,8 @@ class NonAutoregressiveDecoder(nn.Module):
                     )
             num_starts = 0
 
-        # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
-        cached_embeds = self._precompute_cache(embeddings, td=td)
+        # # Compute keys, values for the glimpse and keys for the logits once as they can be reused in every step
+        # cached_embeds = self._precompute_cache(embeddings, td=td)
 
         # Collect outputs
         outputs = []
@@ -177,19 +176,30 @@ class NonAutoregressiveDecoder(nn.Module):
 
             outputs.append(log_p)
             actions.append(action)
-            
-        self._get_heatmap(embeddings, td)
-        
+
+        # Obtain heatmap
+        heatmap = embeddings
+        td["heatmap"] = heatmap
+
+        is_first_iteration = True
+
         # Main decoding: loop until all sequences are done
         while not td["done"].all():
-            log_p, mask = self._get_log_p(cached_embeds, td, softmax_temp, num_starts)
-            
+            log_p, mask = self._get_log_p(td, softmax_temp, num_starts)
+
             # Normalize
             max_log_p = log_p.max(dim=1, keepdim=True)[0]
             log_p = log_p - max_log_p
 
-            # Select the indices of the next nodes in the sequences, result (batch_size) long
-            action = decode_probs(log_p.exp(), mask, decode_type=decode_type)
+            if is_first_iteration:
+                # Set the first action to 0
+                action = torch.zeros(
+                    td["action_mask"].size(0), dtype=torch.long, device=td.device
+                )
+                is_first_iteration = False
+            else:
+                # Select the indices of the next nodes in the sequences, result (batch_size) long
+                action = decode_probs(log_p.exp(), mask, decode_type=decode_type)
 
             td.set("action", action)
             td = env.step(td)["next"]
@@ -246,7 +256,6 @@ class NonAutoregressiveDecoder(nn.Module):
 
     def _get_log_p(
         self,
-        cached: PrecomputedCache,
         td: TensorDict,
         softmax_temp: float = None,
         num_starts: int = 0,
@@ -254,7 +263,6 @@ class NonAutoregressiveDecoder(nn.Module):
         """Compute the log probabilities of the next actions given the current state
 
         Args:
-            cache: Precomputed embeddings
             td: TensorDict with the current environment state
             softmax_temp: Temperature for the softmax
             num_starts: Number of starts for the multi-start decoding
@@ -262,26 +270,15 @@ class NonAutoregressiveDecoder(nn.Module):
 
         # Get the mask
         mask = ~td["action_mask"]
-        
+
         current_action = td.get("action", None)
         if current_action is None:
             log_p = td["heatmap"][:, 0, :]
         else:
             log_p = td["heatmap"][torch.arange(td["heatmap"].size(0)), current_action, :]
-        log_p[mask] =  float('-inf')
-
+        log_p[mask] = float("-inf")
 
         return log_p, mask
-            
-    def _get_heatmap(
-                self,
-        embedding,
-        td: TensorDict,
-    ): 
-        # Obtain heatmap
-        heatmap = embedding @ embedding.transpose(-2, -1) / self.embedding_dim ** 0.5
-        td["heatmap"] = heatmap
-        
 
     def evaluate_action(
         self,

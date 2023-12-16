@@ -1,7 +1,6 @@
 from typing import Tuple, Union
 
 import torch.nn as nn
-from torch import functional as F
 
 from tensordict import TensorDict
 from torch import Tensor
@@ -37,6 +36,8 @@ class GraphAttentionEncoder(nn.Module):
         sdpa_fn=None,
     ):
         super(GraphAttentionEncoder, self).__init__()
+
+        self.embedding_dim = embedding_dim
 
         if isinstance(env_name, RL4COEnvBase):
             env_name = env_name.name
@@ -78,4 +79,5 @@ class GraphAttentionEncoder(nn.Module):
         h = self.net(init_h, mask)
 
         # Return latent representation and initial embedding
+        h = h @ h.transpose(-2, -1) / (self.embedding_dim**0.5)
         return h, init_h

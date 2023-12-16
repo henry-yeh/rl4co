@@ -7,12 +7,11 @@ from torch import Tensor
 
 from rl4co.envs import RL4COEnvBase, get_env
 from rl4co.models.nn.utils import get_log_likelihood
-from rl4co.models.zoo.common.autoregressive.decoder import AutoregressiveDecoder
-from rl4co.models.zoo.common.autoregressive.encoder import GraphAttentionEncoder
+from rl4co.models.zoo.common.nonautoregressive.decoder import NonAutoregressiveDecoder
+from rl4co.models.zoo.common.nonautoregressive.encoder import GraphAttentionEncoder
 from rl4co.utils.ops import select_start_nodes
 from rl4co.utils.pylogger import get_pylogger
 
-from rl4co.models.zoo.common.nonautoregressive.decoder import NonAutoregressiveDecoder
 log = get_pylogger(__name__)
 
 
